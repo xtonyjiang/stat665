@@ -1,0 +1,319 @@
+# Basic neural networks in R
+
+Today, we are going to look at my custom implementation of
+the back-propagation algorithm in R. In total, it is under
+60 lines of code, but does require a bit of thought to
+understand a few complex steps. In order to make this
+relatively fast, I have vectorized the mini-batches. That
+means that it will be significantly faster to calculate
+a single epoch when the mini-batch size is large (though
+the progress in one epoch will be diminished if the number
+is too big).
+
+## Implementation
+
+I start by constructing a neural network object, that is built
+by passing a vector giving the sizes of each layer of the neural
+network. Notice that this vector needs to include the input and
+output layer (so the minimum length for a non-trival network
+is three). This object contains everything that describes the
+architecture of the network: weights, biases, the cost function,
+the activation function, and the derivatives of both. There are
+not weights or biases associated with the output layer, but to
+keep the code clean, I add an empty element to the end of the
+weight and bias lists.
+
+```{r}
+nnetObj <- function(sizes) {
+  f <- function(n,m) matrix(rnorm(n*m),ncol=m)
+  structure(list(sizes = sizes,
+                 nlayer = length(sizes),
+                 sigFun = function(v) 1 / (1 + exp(-v)),
+                 sigFunDeriv = function(v) (1 / (1 + exp(-v))) * (1 / (1 + exp(v-1))),
+                 cost = function(a, y) 0.5 * apply((a - y)^2,2,sum),
+                 costDeriv = function(a, y) (a - y),
+                 w = mapply(f, c(sizes[-1],0), c(sizes[-length(sizes)],0), SIMPLIFY=FALSE),
+                 b = lapply(c(sizes[-1],0), rnorm)),class="net")
+}
+```
+
+We now need a function that takes a neural network and a matrix of
+input data and returns a list of the weighted inputs and activation
+functions for the current set of weights and biases in the network.
+This is done by iteratively applying the weights and biases on the
+input in one layer to get the activations for the next layer. Notice
+that there is an activation for every layer, but no weighted input
+for the input layer (as before, we add an empty element to z to keep
+the notation consistent).
+
+```{r}
+feedforward <- function(nn, x) {
+  a <- list(thisA <- t(x))
+  z <- list(structure(numeric(0), .Dim = c(0L, 0L)))
+
+  for (k in 1:(nn$nlayer-1)) {
+    z <- append(z, list(thisZ <- nn$w[[k]] %*% thisA + nn$b[[k]]))
+    a <- append(a, list(thisA <- nn$sigFun(thisZ)))
+  }
+
+  structure(list(z=z, activations=a),class="ff")
+}
+```
+
+Now, we write a function that takes a neural network and the results
+of the feedforward step to learn the errors (delta in my notes) for
+every layer of the network. There is no error rate for the input layer,
+but again we add an empty element as a placeholder. These are calculated
+by looping backwards through the layers and applying our formula relating
+the errors in one layer to the next layer.
+
+```{r}
+backprop <- function(nn, ff, y) {
+
+  delta <- vector("list", length(nn$w))
+  delta[[1]] <- structure(numeric(0), .Dim = c(0L, 0L))
+
+  delta[[nn$nlayer]] <- nn$costDeriv(ff$a[[nn$nlayer]], t(y)) * nn$sigFunDeriv(ff$z[[nn$nlayer]])
+  for (l in (nn$nlayer-1):2) {
+    delta[[l]] <- t(nn$w[[l]]) %*% delta[[l+1]] * nn$sigFunDeriv(ff$z[[l]])
+  }
+
+  delta
+}
+```
+
+Finally, I wrap all of this into a function that encodes the stochastic gradient
+descent algorithm. It optionally accepts a test set, for which predictions are
+computed and error rates displayed, at the end of the each epoch. The tuning
+parameters are the size of the mini-batch, the number of epochs, and the learning
+rate. We have to construct a neural network architecture to input to this function,
+and we get a copy of the network back, with the updated weights and biases.
+
+```{r}
+sgd <- function(nn, x, y, xtest = NULL, ytest = NULL, m=1, epochs=10L, eta=1.0, verbose=TRUE) {
+  n <- nrow(x)
+  y <- as.matrix(y)
+
+  for (e in 1:epochs) {
+    # sample a set of mini-batches for the data
+    id <- sample(rep(1:(n/m),length.out=n))
+    mb <- split(1:n, id)
+
+    for (j in 1:length(mb)) {
+      mt <- length(mb[[j]])
+
+      # get activation (a), weighted input (z) and errors (delta)
+      # from forward & backward passes through the network
+      ff <- feedforward(nn, x[mb[[j]],,drop=FALSE])
+      delta <- backprop(nn, ff, y[mb[[j]],,drop=FALSE])
+
+      # calculate derivatives of biases and weights
+      nablaB <- lapply(delta, function(v) apply(v, 1, mean))
+      nablaW <- mapply(function(u,v) u %*% t(v) / mt, delta[-1], ff$a[-nn$nlayer], SIMPLIFY=FALSE)
+
+      # update biases and weights
+      nn$b[-nn$nlayer] <- mapply(function(u,v) u - v * eta, nn$b[-nn$nlayer], nablaB[-1])
+      nn$w[-nn$nlayer] <- mapply(function(u,v) u - v * eta, nn$w[-nn$nlayer], nablaW)
+    }
+    if (!is.null(xtest) & verbose) {
+      yhat <- feedforward(nn, x)$a[[nn$nlayer]]
+      trainError <- signif(mean(nn$cost(yhat, as.numeric(y))),4)
+      yhat <- feedforward(nn, xtest)$a[[nn$nlayer]]
+      testError <- signif(mean(nn$cost(yhat, as.numeric(ytest))),4)
+      testMisClass <- signif(mean( (yhat > 0.5) != (Ytest) ),4)
+      cat(sprintf("Epoch %04d/%04d:   train cost - %f  test cost - %f  test miss. rate - %f\n",
+        e, epochs, trainError, testError, testMisClass))
+    }
+  }
+
+  nn
+}
+```
+
+Personally, this algorithm is fairly straightforward once you get the data structure
+for the network settled. The hardest part is making sure that the algorithm works
+correctly in vectorized form. The formula for *nablaW*, while simple in its final form,
+took a bit of head scratching to work out (it turns out the dot product conveniently does
+the right thing with multiple inputs by summing over them). **However, this is still a
+bug this current implementation for networks with more than one output. I am working
+on debugging it, and will update this when I have.**.
+
+## Application to MNIST
+
+Now, I want to read in the full complete version of the MNIST dataset. Notice that the
+images are larger and the number of samples are significantly increased.
+
+```{r}
+train <- read.csv("../../../class_data/mnist/mnist_train.csv", as.is=TRUE, header=FALSE)
+test <- read.csv("../../../class_data/mnist/mnist_test.csv", as.is=TRUE, header=FALSE)
+dim(train)
+dim(test)
+```
+
+To simplify things (and because my multi-output code is still buggy), we are just going
+to solve the subproblem of differentiating between the digits 3 and 5. If you recall, this
+was one of the hardest parts of the original problem.
+
+```{r}
+set.seed(1)
+trainIndex <- which(train[,1] %in% c(3,5))
+testIndex <- which(test[,1] %in% c(3,5))
+
+Xtrain <- train[trainIndex,-1]
+Xtest  <- test[testIndex,-1]
+Ytrain <- as.numeric(train[trainIndex,1] == 5)
+Ytest <- as.numeric(test[testIndex,1] == 5)
+```
+
+We can now run a simple neural network with one hidden layer with 5 neurons.
+I'll start by just building the architecture of the neural network:
+
+```{r}
+nn <- nnetObj(sizes <- c(784,5,1))
+```
+
+Do the dimensions of the output seem to make sense?
+
+```{r}
+lapply(nn$w, dim)
+lapply(nn$b, length)
+```
+
+Now, let's train this over 10 epochs with a learning rate of 1 and
+mini-batch size of 100.
+
+```{r}
+nn2 <- sgd(nn, Xtrain, Ytrain, Xtest, Ytest, m=100, epochs=10, eta=1)
+```
+
+Notice that this does much better than random guessing, but not particularly
+great compared to the results we saw last time. Also, the algorithm seems noisy
+and the error rates bounce around substantially from epoch to epoch. Can we
+improve things by changing the learning rate?
+
+```{r}
+nn2 <- sgd(nn, Xtrain, Ytrain, Xtest, Ytest, m=100, epochs=10, eta=0.1)
+```
+
+What about increasing the number of hidden nodes?
+
+```{r}
+set.seed(1)
+nn <- nnetObj(sizes <- c(784,25,1))
+nn2 <- sgd(nn, Xtrain, Ytrain, Xtest, Ytest, m=100, epochs=10, eta=0.5)
+```
+
+Increasing then number of nodes seems to work well. What if we increase
+them further to a total of 200 hidden nodes? For this, let's increase the
+number of epochs as well given the increase in the number of parameter
+we need to learn.
+
+```{r}
+set.seed(1)
+nn <- nnetObj(sizes <- c(784,200,1))
+nn2 <- sgd(nn, Xtrain, Ytrain, Xtest, Ytest, m=100, epochs=25, eta=0.5)
+```
+
+Now, what happens if we further increase the number of layers, adding
+a second layer with 50 hidden nodes.
+
+```{r}
+set.seed(1)
+nn <- nnetObj(sizes <- c(784,200,50,1))
+nn2 <- sgd(nn, Xtrain, Ytrain, Xtest, Ytest, m=100, epochs=25, eta=0.3)
+```
+
+This slightly improves on the classification with just a single layer of 200
+neurons. What you don't see is that this has also become less stable. I really
+needed to hand tune the learning rate eta to get a better solution. We will
+save the predictions on the test set for later:
+
+```{r}
+yhat <- feedforward(nn2, Xtest)$a[[nn$nlayer]]
+```
+
+Another thing missing from seeing this as a per-computed html page is
+how long these algorithms are taking. Here are timing of how long it
+takes to fit one epoch for 10 hidden nodes versus 20 hidden nodes,
+for a variety of mini-batch sizes.
+
+```{r}
+nn <- nnetObj(sizes <- c(784,10,1))
+system.time({nn2 <- sgd(nn, Xtrain, Ytrain, Xtest, Ytest, m=10, 1, 0.5, FALSE)})
+system.time({nn2 <- sgd(nn, Xtrain, Ytrain, Xtest, Ytest, m=100, 1, 0.5, FALSE)})
+system.time({nn2 <- sgd(nn, Xtrain, Ytrain, Xtest, Ytest, m=1000, 1, 0.5, FALSE)})
+nn <- nnetObj(sizes <- c(784,20,1))
+system.time({nn2 <- sgd(nn, Xtrain, Ytrain, Xtest, Ytest, m=10, 1, 0.5, FALSE)})
+system.time({nn2 <- sgd(nn, Xtrain, Ytrain, Xtest, Ytest, m=100, 1, 0.5, FALSE)})
+system.time({nn2 <- sgd(nn, Xtrain, Ytrain, Xtest, Ytest, m=1000, 1, 0.5, FALSE)})
+```
+
+Notice that the scaling in the number of weights and mini-batch sizes are
+atypical of a lower-level programming language. We see almost no slowdown
+in increasing the number of nodes and a drastic speed-up in increasing the
+mini-batch size. This has to do with the most of the computation time occurring
+in R rather than the actual multiplication and allocation of matrices. In highly
+optimized implementations, you would see some decrease in the mini-batch size up
+to a critical point (having the do with caches and other details of the CPU or GPU
+architecture), at which point there would be virtually no speed up. The relationship
+to the size of the network is a complex one that we will explore later.
+
+### Visualizing the output of a neural network
+
+While often opaque, we can sometimes benefit from actually trying to understand
+the learned weights in a fitted neural network. Running a small model with a
+single layer of just 9 hidden nodes, we can plot the associated weights of each
+of the nodes:
+
+```{r}
+nn <- nnetObj(sizes <- c(784,9,1))
+nn2 <- sgd(nn, Xtrain, Ytrain, Xtest, Ytest, m=100, epochs=25, eta=0.2, FALSE)
+
+par(mfrow=c(3,3))
+par(mar=c(0,0,0,0))
+for (j in 1:9) {
+  z <- nn2$w[[1]][j,]
+  z <- (z - min(z)) / (max(z) - min(z))
+  z <- matrix(as.matrix(z),28,28,byrow=TRUE)
+  plot(0,0,axes=FALSE,xlab="",ylab="",main="")
+  rasterImage((1 - z),-1,-1,1,1)
+  box()
+}
+```
+
+These can be interpreted as a filter on the image. Here, it is difficult to
+make much of the filters, but in future problems we can actually interpret what
+meta-features are getting selected in each node.
+
+### Misclassified points
+
+As with our SVM implementation, we can attempt to understand where the neural
+network is having the most difficulty by pulling out mis-classified examples
+from the test set.
+
+```{r}
+iset <- order((yhat - Ytest)^2, decreasing=TRUE)[1:(7*7)]
+par(mar=c(0,0,0,0))
+par(mfrow=c(7,7))
+for (j in iset) {
+  y <- matrix(as.matrix(Xtest[j,]),28,28,byrow=TRUE)
+  y <- (1 - y / 256)
+
+  plot(0,0,xlab="",ylab="",axes=FALSE)
+  rasterImage(y,-1,-1,1,1)
+  box()
+  text(-0.8,-0.7, c(3,5)[Ytest[j]+1], cex=3, col="red")
+}
+```
+
+Most of these seem classifiable by us, though some are understandably difficult
+given the squished versions of the digits. In order to improve on this model, we
+need to build bigger, and deeper networks. To do that, we need to make some
+small tweaks to our algorithm in order to fit the weights and biases in a more
+stable and accurate way.
+
+
+
+
+
+
