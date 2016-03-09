@@ -69,8 +69,7 @@ feedforward <- function(nn, x) {
 
 Now, we write a function that takes a neural network and the results
 of the feedforward step to learn the errors (delta in my notes) for
-every layer of the network. There is no error rate for the input layer,
-but again we add an empty element as a placeholder. These are calculated
+every layer of the network. These are calculated
 by looping backwards through the layers and applying our formula relating
 the errors in one layer to the next layer.
 
@@ -104,7 +103,7 @@ rate. We have to construct a neural network architecture to input to this functi
 and we get a copy of the network back, with the updated weights and biases.
 
 ```{r}
-sgd <- function(nn,X,Y,Xtrain=NULL,Ytrain=NULL,
+sgd <- function(nn,X,Y,Xtest=NULL,Ytest=NULL,
                 epochs=10L,m=10,eta=1,verbose=TRUE) {
 
   n <- nrow(X)
@@ -164,9 +163,7 @@ Personally, this algorithm is fairly straightforward once you get the data struc
 for the network settled. The hardest part is making sure that the algorithm works
 correctly in vectorized form. The formula for *nablaW*, while simple in its final form,
 took a bit of head scratching to work out (it turns out the dot product conveniently does
-the right thing with multiple inputs by summing over them). **However, this is still a
-bug this current implementation for networks with more than one output. I am working
-on debugging it, and will update this when I have.**.
+the right thing with multiple inputs by summing over them).
 
 ## Application to MNIST
 

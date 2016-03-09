@@ -99,7 +99,7 @@ zeroVec &lt;- function(d) rep(0,d)</code></pre>
 
   structure(list(zs=zs, activations=activations),class=&quot;ff&quot;)
 }</code></pre>
-<p>Now, we write a function that takes a neural network and the results of the feedforward step to learn the errors (delta in my notes) for every layer of the network. There is no error rate for the input layer, but again we add an empty element as a placeholder. These are calculated by looping backwards through the layers and applying our formula relating the errors in one layer to the next layer.</p>
+<p>Now, we write a function that takes a neural network and the results of the feedforward step to learn the errors (delta in my notes) for every layer of the network. These are calculated by looping backwards through the layers and applying our formula relating the errors in one layer to the next layer.</p>
 <pre class="r"><code>backprop &lt;- function(nn, ff, y) {
   delta_nabla_b &lt;- lapply(sapply(nn$biases,length),zeroVec)
   delta_nabla_w &lt;- lapply(lapply(nn$weights,dim),zeroMat)
@@ -120,7 +120,7 @@ zeroVec &lt;- function(d) rep(0,d)</code></pre>
   structure(list(delta_nabla_b=delta_nabla_b, delta_nabla_w=delta_nabla_w))
 }</code></pre>
 <p>Finally, I wrap all of this into a function that encodes the stochastic gradient descent algorithm. It optionally accepts a test set, for which predictions are computed and error rates displayed, at the end of the each epoch. The tuning parameters are the size of the mini-batch, the number of epochs, and the learning rate. We have to construct a neural network architecture to input to this function, and we get a copy of the network back, with the updated weights and biases.</p>
-<pre class="r"><code>sgd &lt;- function(nn,X,Y,Xtrain=NULL,Ytrain=NULL,
+<pre class="r"><code>sgd &lt;- function(nn,X,Y,Xtest=NULL,Ytest=NULL,
                 epochs=10L,m=10,eta=1,verbose=TRUE) {
 
   n &lt;- nrow(X)
@@ -174,7 +174,7 @@ zeroVec &lt;- function(d) rep(0,d)</code></pre>
   }
   return(nn)
 }</code></pre>
-<p>Personally, this algorithm is fairly straightforward once you get the data structure for the network settled. The hardest part is making sure that the algorithm works correctly in vectorized form. The formula for <em>nablaW</em>, while simple in its final form, took a bit of head scratching to work out (it turns out the dot product conveniently does the right thing with multiple inputs by summing over them). <strong>However, this is still a bug this current implementation for networks with more than one output. I am working on debugging it, and will update this when I have.</strong>.</p>
+<p>Personally, this algorithm is fairly straightforward once you get the data structure for the network settled. The hardest part is making sure that the algorithm works correctly in vectorized form. The formula for <em>nablaW</em>, while simple in its final form, took a bit of head scratching to work out (it turns out the dot product conveniently does the right thing with multiple inputs by summing over them).</p>
 </div>
 <div id="application-to-mnist" class="section level2">
 <h2>Application to MNIST</h2>
@@ -221,18 +221,18 @@ nn &lt;- nnetObj(sizes)</code></pre>
 ## [1] 10</code></pre>
 <p>Now, let’s train this over 5 epochs with a learning rate of 1 and mini-batch size of 1.</p>
 <pre class="r"><code>nn2 &lt;- sgd(nn, X, Y, Xtest, Ytest, m=1, epochs=5, eta=1)</code></pre>
-<pre><code>## Epoch 1 - 08861 / 10000
-## Epoch 2 - 09168 / 10000
-## Epoch 3 - 09164 / 10000
-## Epoch 4 - 09206 / 10000
-## Epoch 5 - 09238 / 10000</code></pre>
+<pre><code>## Epoch 1 - 09058 / 10000
+## Epoch 2 - 09243 / 10000
+## Epoch 3 - 09212 / 10000
+## Epoch 4 - 09263 / 10000
+## Epoch 5 - 09222 / 10000</code></pre>
 <p>Can we improve things by changing the learning rate?</p>
 <pre class="r"><code>nn2 &lt;- sgd(nn, X, Y, Xtest, Ytest, m=1, epochs=5, eta=2)</code></pre>
-<pre><code>## Epoch 1 - 08787 / 10000
-## Epoch 2 - 08980 / 10000
-## Epoch 3 - 08960 / 10000
-## Epoch 4 - 09002 / 10000
-## Epoch 5 - 09074 / 10000</code></pre>
+<pre><code>## Epoch 1 - 08697 / 10000
+## Epoch 2 - 08880 / 10000
+## Epoch 3 - 08846 / 10000
+## Epoch 4 - 08894 / 10000
+## Epoch 5 - 09063 / 10000</code></pre>
 <p>What about increasing the number of hidden nodes? What if we increase them to a total of 60 hidden nodes? For this, let’s increase the number of epochs as well given the increase in the number of parameter we need to learn.</p>
 <pre class="r"><code>set.seed(1)
 nn &lt;- nnetObj(sizes &lt;- c(784,60,10))

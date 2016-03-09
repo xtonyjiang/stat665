@@ -11,8 +11,8 @@
 
 \vfill
 
-{\fontsize{0.7cm}{0cm}\selectfont Lecture 14 \\\vspace{0.2cm} Cost Functions,
-Regularization and Weight Initialization}\\\vspace{0.5cm}
+{\fontsize{0.7cm}{0cm}\selectfont Lecture 14 \\\vspace{0.2cm} Cost Functions
+and Regularization}\\\vspace{0.5cm}
 07 March 2016
 
 \vspace{2cm}
@@ -139,22 +139,6 @@ these are not always present. It has enjoyed wide-spread adoption and massive
 empirical evidence as to its usefulness.
 
 \end{frame}
-
-%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-\begin{frame}[fragile] \frametitle{} \oldB \small
-
-\textbf{\yblue{Initial weights}}
-
-Rather than initializing the weights in the neural network by a standard normal
-Gaussian, it is better to initialize with Gaussian noise with zero mean but a
-standard deviation of $1 / \sqrt{n}$ where $n$ is the number of nodes from the
-previous layer that are incoming to this given node.
-
-This has the effect of making the distribution of all of the weighted inputs, $z_j^l$,
-equal to standard Gaussian noise.
-
-\end{frame}
-
 
 \end{document}
 

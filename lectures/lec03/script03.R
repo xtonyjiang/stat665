@@ -1,4 +1,5 @@
-x <- read.csv("http://euler.stat.yale.edu/~tba3/class_data/nyc_test.csv", as.is=TRUE, nrow=1e5)
+x <- read.csv("http://euler.stat.yale.edu/~tba3/class_data/nyc_test.csv",
+              as.is=TRUE, nrow=1e5)
 head(x)
 dim(x)
 
